@@ -110,7 +110,10 @@ void readBattery(){
   uint32_t millivolts=0;unsigned maxRaw=0;
   for(int i=0;i<32;++i){millivolts+=analogReadMilliVolts(BATTERY_PIN);maxRaw=max(maxRaw,(unsigned)analogRead(BATTERY_PIN));}
   const float pinVolts=millivolts/32000.0f;
-  battery=maxRaw>=4080||pinVolts<0.15f?NAN:pinVolts*(DIVIDER_TOP_OHMS+DIVIDER_BOTTOM_OHMS)/DIVIDER_BOTTOM_OHMS*BATTERY_GAIN+BATTERY_OFFSET_V;
+  const float estimate=pinVolts*(DIVIDER_TOP_OHMS+DIVIDER_BOTTOM_OHMS)/DIVIDER_BOTTOM_OHMS;
+  // Below 8 V the 12 V installation cannot reliably power the modem and ESP32.
+  // Reject low estimates from an unpowered or floating divider during USB testing.
+  battery=maxRaw>=4080||estimate<8.0f?NAN:estimate*BATTERY_GAIN+BATTERY_OFFSET_V;
 }
 
 void syncClockFromGps(unsigned long now){
