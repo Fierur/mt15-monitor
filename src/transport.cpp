@@ -12,6 +12,8 @@
 namespace {
 HardwareSerial modem(2);
 bool modemReady=false;
+bool mqttReady=false;
+unsigned long mqttRetryAt=0, lastMqttSignal=0;
 unsigned connectFailures=0;
 unsigned long modemRetryAt=0;
 std::atomic<int> signalDbm{0};
@@ -94,6 +96,16 @@ bool ensureCertificate(const char *filename,const char *pem){
   modem.print(pem);
   return waitFor("OK",5000);
 }
+bool configureModemTls(unsigned context, const char *caFile, const char *caPem){
+  const String index=String(context);
+  return command(String("AT+CSSLCFG=\"sslversion\",")+index+",3")&&
+    command(String("AT+CSSLCFG=\"authmode\",")+index+",1")&&
+    command(String("AT+CSSLCFG=\"ignorelocaltime\",")+index+",0")&&
+    command(String("AT+CSSLCFG=\"enableSNI\",")+index+",1")&&
+    command(String("AT+CSSLCFG=\"ignorecertCN\",")+index+",0")&&
+    ensureCertificate(caFile,caPem)&&
+    command(String("AT+CSSLCFG=\"cacert\",")+index+",\""+caFile+"\"");
+}
 bool connectCellular(const char *caFile=MODEM_CA_FILE,const char *caPem=ROOT_CA_PEM){
   if(!WIRING_CONFIRMED||!strlen(CELLULAR_APN))return false;
   if(!safeATValue(CELLULAR_APN)||!safeATValue(caFile))return false;
@@ -130,13 +142,102 @@ bool connectCellular(const char *caFile=MODEM_CA_FILE,const char *caPem=ROOT_CA_
   time_t current=time(nullptr);
   if(current<1735689600){Serial.println("[4G] Waiting for valid GPS or modem time for TLS");return false;}
   struct tm utc;gmtime_r(&current,&utc);char clock[32];strftime(clock,sizeof(clock),"%y/%m/%d,%H:%M:%S+00",&utc);
-  ok=command(String("AT+CCLK=\"")+clock+"\"")&&
-    command("AT+CSSLCFG=\"sslversion\",0,3")&&command("AT+CSSLCFG=\"authmode\",0,1")&&
-    command("AT+CSSLCFG=\"ignorelocaltime\",0,0")&&command("AT+CSSLCFG=\"enableSNI\",0,1")&&
-    command("AT+CSSLCFG=\"ignorecertCN\",0,0")&&ensureCertificate(caFile,caPem)&&
-    command(String("AT+CSSLCFG=\"cacert\",0,\"")+caFile+"\"");
+  ok=command(String("AT+CCLK=\"")+clock+"\"")&&configureModemTls(0,caFile,caPem);
   if(ok)connectFailures=0;else ++connectFailures;
   return ok;
+}
+void closeMqtt(){
+  mqttReady=false;
+  command("AT+CMQTTDISC=0,5","+CMQTTDISC:",1500);
+  command("AT+CMQTTREL=0","OK",1500);
+  command("AT+CMQTTSTOP","+CMQTTSTOP:",1500);
+}
+bool mqttInput(const char *operation,const char *body,const char *suffix=""){
+  if(!command(String(operation)+"=0,"+strlen(body)+suffix,">",1500))return false;
+  modem.print(body);
+  return waitFor("OK",1500);
+}
+bool mqttResult(const String &request,const char *event,unsigned long timeout,bool indexed=true){
+  String response;
+  if(!command(request,event,timeout,&response)){
+    Serial.printf("[MQTT] No response for %s\n",event);
+    return false;
+  }
+  const char *values=strchr(response.c_str(),':')+1;
+  int first=-1,second=-1;
+  const int count=sscanf(values,"%d,%d",&first,&second);
+  if(first==0&&((indexed&&count==2&&second==0)||(!indexed&&count==1)))return true;
+  Serial.printf("[MQTT] %s\n",response.c_str());
+  return false;
+}
+bool connectMqtt(const String &ackTopic){
+  if(!modemReady)modemReady=connectCellular();
+  if(!modemReady||!configureModemTls(8,"mt15-mqtt-root.pem",MT15_MQTT_CA_PEM))return false;
+  if(!mqttResult("AT+CMQTTSTART","+CMQTTSTART:",5000,false)){
+    // A reboot of the ESP32 can leave its previous session on the powered modem.
+    closeMqtt();
+    if(!mqttResult("AT+CMQTTSTART","+CMQTTSTART:",5000,false))return false;
+  }
+  const bool subscribed=command(String("AT+CMQTTACCQ=0,\"")+DEVICE_ID+"\",1")&&
+    command("AT+CMQTTSSLCFG=0,8")&&
+    mqttResult(String("AT+CMQTTCONNECT=0,\"tcp://")+MT15_MQTT_HOST+":"+MT15_MQTT_PORT+"\",45,1,\""+
+            MT15_MQTT_USER+"\",\""+MT15_MQTT_PASSWORD+"\"","+CMQTTCONNECT:",45000)&&
+    mqttInput("AT+CMQTTSUBTOPIC",ackTopic.c_str(),",1")&&
+    mqttResult("AT+CMQTTSUB=0","+CMQTTSUB:",5000);
+  if(!subscribed){closeMqtt();return false;}
+  lastMqttSignal=millis();
+  Serial.println("[MQTT] Connected and subscribed to Supabase acknowledgements");
+  return true;
+}
+int mqttAcknowledgement(const String &ackTopic,const char *payload,String &reply){
+  JsonDocument sent;
+  if(deserializeJson(sent,payload))return -1;
+  bool ackTopicReceived=false;
+  const unsigned long start=millis();
+  while(millis()-start<2200){
+    const String response=line(120);
+    if(response.startsWith("+CMQTTRXSTART:"))ackTopicReceived=false;
+    else if(response.startsWith("+CMQTTRXTOPIC:"))ackTopicReceived=line(300)==ackTopic;
+    else if(response.startsWith("+CMQTTRXPAYLOAD:")){
+      const String body=line(350);
+      if(!ackTopicReceived)continue;
+      JsonDocument received;
+      if(deserializeJson(received,body)||
+         received["ack"]["boot_id"].as<String>()!=sent["boot_id"].as<String>()||
+         !received["ack"]["seq"].is<uint32_t>()||
+         received["ack"]["seq"].as<uint32_t>()!=sent["seq"].as<uint32_t>())continue;
+      const int status=received["status"].as<int>();
+      if(status==200&&received["accepted"].as<bool>()&&received["settings"]["armed"].is<bool>()&&
+         received["settings"]["revision"].is<uint32_t>()){
+        reply=body;
+        return status;
+      }
+      if(status==400||status==413||status==422)return status;
+    }else if(response.startsWith("+CMQTTCONNLOST:")||response=="ERROR")break;
+  }
+  return -1;
+}
+int cellularMqtt(const char *payload,String &reply){
+  if(!MODEM_TLS_VERIFIED||!strlen(MT15_MQTT_HOST)||!strlen(MT15_MQTT_USER)||
+     !strlen(MT15_MQTT_PASSWORD)||!strlen(MT15_MQTT_CA_PEM)||!safeATValue(MT15_MQTT_HOST)||
+     !safeATValue(MT15_MQTT_USER)||!safeATValue(MT15_MQTT_PASSWORD)||!safeATValue(DEVICE_ID))return -1;
+  if(mqttRetryAt&&static_cast<int32_t>(millis()-mqttRetryAt)<0)return -1;
+  const String prefix=String("mt15/")+DEVICE_ID;
+  const String ackTopic=prefix+"/ack";
+  if(!mqttReady)mqttReady=connectMqtt(ackTopic);
+  if(mqttReady&&mqttInput("AT+CMQTTTOPIC",(prefix+"/telemetry").c_str())&&mqttInput("AT+CMQTTPAYLOAD",payload)){
+    pending="";
+    modem.println("AT+CMQTTPUB=0,1,5,0,0");
+    const int status=mqttAcknowledgement(ackTopic,payload,reply);
+    if(status>0){
+      if(millis()-lastMqttSignal>=30000){lastMqttSignal=millis();readSignal();}
+      return status;
+    }
+  }
+  if(mqttReady)closeMqtt();
+  mqttRetryAt=millis()+30000;
+  Serial.println("[MQTT] No Supabase acknowledgement; falling back to HTTPS");
+  return -1;
 }
 int cellularPost(const String &url,const String &header,const char *payload,String &reply){
   if(!MODEM_TLS_VERIFIED)return -1;
@@ -241,6 +342,10 @@ int transportPost(const String &baseUrl,const char *payload,String &reply){
   if(cloud){
     if(!supabaseOrigin(url)||!headerValue.startsWith("sb_publishable_")||
        headerValue.length()<=15||!safeATValue(headerValue))return -1;
+    if(MODEM_ENABLED){
+      const int status=cellularMqtt(payload,reply);
+      if(status>0)return status;
+    }
     JsonDocument sample;
     if(deserializeJson(sample,payload)||!sample.is<JsonObject>())return -1;
     JsonDocument request;
@@ -301,7 +406,10 @@ void transportTestTls(const String &url, Print &out){
   modemRetryAt=0;
 }
 void transportShutdown(){
-  if(MODEM_ENABLED&&WIRING_CONFIRMED)command("AT+CPOF","OK",5000);
+  if(MODEM_ENABLED&&WIRING_CONFIRMED){
+    if(mqttReady)closeMqtt();
+    command("AT+CPOF","OK",5000);
+  }
   WiFi.disconnect(true);WiFi.mode(WIFI_OFF);
 }
 int transportSignalDbm(){return signalDbm.load();}

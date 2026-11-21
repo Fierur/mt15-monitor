@@ -7,6 +7,7 @@
 .vscode/ipch/
 include/secrets.h
 include/supabase.local.h
+include/mqtt.local.h
 include/supabase.local.tmp
 *.bin
 *.elf

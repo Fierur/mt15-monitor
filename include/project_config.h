@@ -1,11 +1,29 @@
 #pragma once
 
-// Personal settings first, defaults second. Legacy MQTT macros are ignored.
+// Personal settings first, defaults second.
 #if __has_include("secrets.h")
 #include "secrets.h"
 #endif
 #if __has_include("supabase.local.h")
 #include "supabase.local.h"
+#endif
+#if __has_include("mqtt.local.h")
+#include "mqtt.local.h"
+#endif
+#ifndef MT15_MQTT_HOST
+#define MT15_MQTT_HOST ""
+#endif
+#ifndef MT15_MQTT_PORT
+#define MT15_MQTT_PORT 443
+#endif
+#ifndef MT15_MQTT_USER
+#define MT15_MQTT_USER ""
+#endif
+#ifndef MT15_MQTT_PASSWORD
+#define MT15_MQTT_PASSWORD ""
+#endif
+#ifndef MT15_MQTT_CA_PEM
+#define MT15_MQTT_CA_PEM ""
 #endif
 #ifndef DEVICE_ID
 #define DEVICE_ID "mt15-001"

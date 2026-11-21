@@ -76,3 +76,22 @@ trên modem đạt, chạy lại với `--enable-4g` rồi nạp qua USB.
 
 Chế độ FastAPI/SQLite vẫn chạy bằng `scripts/start-server.ps1` khi cần thử trên bàn.
 Email tự động trong chế độ Supabase chưa có dịch vụ gửi.
+
+## Gửi MQTT từ modem qua laptop
+
+Mosquitto lắng nghe trên `127.0.0.1:1887`. Tailscale Funnel đưa cổng TCP TLS
+`8443` về broker. ESP32 và dịch vụ chuyển tiếp dùng hai tài khoản riêng, với
+quyền đọc và ghi theo topic của thiết bị. Sau khi Supabase nhận bản tin, dịch
+vụ chuyển tiếp trả ACK để ESP32 xác nhận. Nếu ACK quá hạn, ESP32 thử gửi HTTPS.
+Supabase dùng `boot_id` và `seq` để xử lý bản tin gửi lại.
+
+Cấu hình của laptop nằm trong `data/mqtt-live/`. Cấu hình build của ESP32 nằm
+trong `include/mqtt.local.h`. Git bỏ qua các tệp này.
+
+Sau khi khởi động lại laptop, mở Tailscale rồi chạy từ thư mục dự án:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/start-mqtt.ps1
+```
+
+Xem trạng thái dịch vụ chuyển tiếp trong `data/mqtt-live/bridge-errors.log`.
