@@ -14,22 +14,14 @@ Hai cấp độ, tùy phần cứng đã sẵn sàng tới đâu. Luôn nói rõ
    .\.venv\Scripts\python.exe scripts/simulate.py --env server/.env.demo --url http://127.0.0.1:8001 --count 60
    ```
 3. Trình bày trên dashboard: điện áp, nhiệt độ hộp (nhấn mạnh **không phải nhiệt động cơ**), tốc độ, trạng thái, bản đồ hành trình, biểu đồ.
-4. Bấm **Bật chống trộm** → dòng trạng thái "Đang chờ thiết bị nhận và xác nhận". Bản tin mô phỏng kế tiếp mang cấu hình mới → "Thiết bị đã xác nhận" (mô phỏng cơ chế ACK mà ESP32 thật dùng).
-5. Gửi chuyển động khi đang bật chống trộm:
-   ```powershell
-   .\.venv\Scripts\python.exe scripts/simulate.py --env server/.env.demo --url http://127.0.0.1:8001 --count 3 --motion
-   ```
-   → nhật ký cảnh báo có `movement`; nếu `.env.demo` có SMTP thì email được gửi.
-6. Bấm **Gửi email thử** (khi đã cấu hình SMTP), **Tải dữ liệu CSV**, mở trên điện thoại để cho thấy giao diện responsive.
+4. Bấm **Tải dữ liệu CSV**, mở dashboard trên điện thoại để kiểm tra bố cục.
 
 ## B. Demo với ESP32 thật (sau khi đã đối chiếu dây, xem HARDWARE.md)
 
 1. Server thật: `.\scripts\start-server.ps1`; nếu cần xem từ mạng khác: `.\scripts\start-tunnel.ps1`, rồi gõ lệnh `URL https://<url-mới>` cho ESP32 qua Serial.
 2. ESP32 qua Wi-Fi (hoặc 4G khi đã kiểm chứng): website hiện "Đã kết nối", số đo thật. Mang GPS ra chỗ thoáng để có vị trí.
-3. Bật chống trộm trên điện thoại → ESP32 in `[CONFIG] armed=1` → web báo "Thiết bị đã xác nhận".
-4. Lắc thiết bị → cảnh báo `movement` trên web và email trong vài giây.
-5. Rút mạng laptop (hoặc tắt Wi-Fi) khoảng 1 phút rồi bật lại → các bản tin lưu tạm được gửi bù (đánh dấu "dữ liệu gửi bù"), lịch sử không có khoảng trống sự kiện.
-6. Xuất CSV.
+3. Rút mạng laptop (hoặc tắt Wi-Fi) khoảng 1 phút rồi bật lại. Kiểm tra các bản tin được gửi lại từ bộ nhớ ESP32 trong lịch sử.
+4. Xuất CSV.
 
 ## Những điều không nên tuyên bố khi demo
 

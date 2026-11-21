@@ -36,10 +36,9 @@ function createSupabaseDashboard(config) {
     }
   }
 
-  async function request(path, { method = 'GET', body, token, prefer } = {}) {
+  async function request(path, { method = 'GET', body, token } = {}) {
     const headers = { apikey: config.key, 'Content-Type': 'application/json' };
     if (token) headers.Authorization = 'Bearer ' + token;
-    if (prefer) headers.Prefer = prefer;
     const response = await fetch(config.url + path, {
       method, headers, body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(12000)
@@ -109,20 +108,18 @@ function createSupabaseDashboard(config) {
   async function status() {
     const [[latest], [settings]] = await Promise.all([
       query('device_latest', { ...device, select: 'telemetry(*)', limit: 1 }),
-      query('settings', { ...device, select: 'armed,revision,low_battery_v', limit: 1 })
+      query('settings', { ...device, select: 'low_battery_v', limit: 1 })
     ]);
     if (!settings) throw new Error('Không tìm thấy cấu hình thiết bị trên Supabase.');
     const telemetry = latest?.telemetry ? sample(latest.telemetry) : null;
     const age = telemetry ? Math.max(0, Date.now() / 1000 - telemetry.received_at) : null;
     const online = telemetry && age <= Math.max(30, telemetry.next_report_s + 60);
     return {
-      device_id: config.device_id, settings, telemetry,
+      device_id: config.device_id, telemetry,
       received_at: telemetry?.received_at, age_s: age === null ? null : Math.floor(age),
       connection: !telemetry ? 'never_seen' : !online ? 'offline'
         : telemetry.mode === 'parked' && telemetry.next_report_s >= 60 ? 'sleeping' : 'online',
-      config_applied: !!telemetry && settings.revision === telemetry.config_revision
-        && settings.armed === telemetry.armed,
-      low_battery_voltage: settings.low_battery_v, smtp_configured: false
+      low_battery_voltage: settings.low_battery_v
     };
   }
 
@@ -190,13 +187,6 @@ function createSupabaseDashboard(config) {
       if (route === 'alerts') {
         const rows = await query('alerts', { ...device, select: '*', order: 'id.desc', limit: 100 });
         return rows.map(row => ({ ...row, created_at: time(row.created_at) }));
-      }
-      if (route === 'settings' && options.method === 'PUT') {
-        const [result] = await query('settings', { ...device, select: 'armed,revision' }, {
-          method: 'PATCH', body: JSON.parse(options.body), prefer: 'return=representation'
-        });
-        if (!result) throw new Error('Không cập nhật được chế độ chống trộm.');
-        return result;
       }
       throw new Error('API dashboard không được hỗ trợ.');
     },

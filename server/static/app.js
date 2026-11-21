@@ -1,11 +1,15 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let cloudDashboard = null;
-let csrf = '', state = null, timer = null, map = null, marker = null, route = null, chart = null, refreshing = false;
+let csrf = '', timer = null, map = null, marker = null, route = null, chart = null, refreshing = false;
 let unsubscribe = null, liveTimer = null, refreshQueued = false;
 const fmt = (v, unit, digits=1) => v == null ? '—' : `${Number(v).toFixed(digits)} ${unit}`;
 const when = epoch => new Date(epoch * 1000).toLocaleString('vi-VN');
 const modes = {driving:'Đang chạy',parked:'Đang đỗ',tracking:'Vừa có chuyển động',low_battery:'Bình yếu',bench:'Thử trên bàn'};
+const handledWarnings = new Set([
+  'IGNITION_NOT_CONNECTED', 'GPS_NO_FRESH_FIX', 'ADC_SATURATED_OR_INVALID',
+  'ADC_NOT_CALIBRATED', 'ADC_ABOVE_ACCURATE_RANGE',
+]);
 async function api(path, options={}) {
   if (cloudDashboard) {
     try {
@@ -48,7 +52,7 @@ function setUpdateMode(realtime) {
   label.hidden = !cloudDashboard;
   label.textContent = realtime ? 'Cập nhật trực tiếp' : 'Tự cập nhật mỗi 5 giây';
 }
-function renderAlert(alert, smtpConfigured) {
+function renderAlert(alert) {
   const row = document.createElement('div');
   row.className = 'alert';
   const date = document.createElement('time');
@@ -92,14 +96,7 @@ function renderAlert(alert, smtpConfigured) {
     }
     detail.append(locations);
   }
-  const mail = document.createElement('span');
-  mail.className = 'mail';
-  const mailStatus = {
-    sent: 'Email đã gửi', pending: smtpConfigured ? 'Email đang chờ gửi' : 'Email chưa cấu hình',
-    failed: 'Gửi email thất bại', disabled: 'Email chưa bật',
-  }[alert.mail_status] ?? '';
-  mail.textContent = mailStatus + (alert.last_error ? ` (${alert.last_error})` : '');
-  row.append(date, detail, mail);
+  row.append(date, detail);
   return row;
 }
 async function openDashboard(){
@@ -132,7 +129,7 @@ async function refresh(){
   refreshing = true;
   try{
     const start=Date.now()/1000-Number($('history-range').value)*3600;
-    const [s,history,alerts]=await Promise.all([api('status'),api(`history?start=${start}`),api('alerts')]);state=s;notice('');
+    const [s,history,alerts]=await Promise.all([api('status'),api(`history?start=${start}`),api('alerts')]);notice('');
     const p=s.telemetry;
     $('device-id').textContent=s.device_id;
     $('connection').textContent=({online:'Đã kết nối',sleeping:'Đang ngủ',offline:'Mất kết nối',never_seen:'Chưa có dữ liệu'})[s.connection];
@@ -147,12 +144,9 @@ async function refresh(){
     $('vehicle-mode').textContent=p?(p.fallen?(p.tilt_deg>0?'NGÃ BÊN TRÁI':p.tilt_deg<0?'NGÃ BÊN PHẢI':'XE BỊ NGÃ'):(modes[p.mode]||p.mode)):'—';$('vehicle-mode').classList.toggle('danger',!!p?.fallen);
     $('motion-state').textContent=p?`${p.motion?'Có chuyển động':'Chưa phát hiện chuyển động'} · Nghiêng: ${p.tilt_deg==null?'—':Math.abs(Math.round(p.tilt_deg))<2?'thẳng':Math.abs(Math.round(p.tilt_deg))+'° '+(p.tilt_deg>0?'trái':'phải')}${p.ignition==null?'':' · Khóa: '+(p.ignition?'bật':'tắt')}`:'Chưa có dữ liệu chuyển động';
     $('gps-state').textContent=p?.gps_valid?'GPS đã có định vị':'GPS chưa có vị trí hợp lệ';$('satellites').textContent=`${p?.satellites??'—'} vệ tinh`;
-    $('guard-state').textContent=`Chống trộm ${s.settings.armed?'đang bật':'đang tắt'}`;$('arm-toggle').textContent=s.settings.armed?'Tắt chống trộm':'Bật chống trộm';
-    $('guard-applied').textContent=s.config_applied?'Thiết bị đã xác nhận.':'Đang chờ thiết bị nhận và xác nhận; khi ngủ có thể mất tới 15 phút.';
-    const visibleErrors = errs.filter(code => code !== 'IGNITION_NOT_CONNECTED');
-    const notes=[];if(!s.smtp_configured&&!cloudDashboard)notes.push('Email chưa cấu hình SMTP.');if(s.low_battery_voltage==null&&p?.battery_v!=null)notes.push('Chưa đặt ngưỡng bình yếu.');if(visibleErrors.length)notes.push('Thiết bị: '+visibleErrors.join(', '));
+    const visibleErrors = errs.filter(code => !handledWarnings.has(code));
+    const notes=[];if(s.low_battery_voltage==null&&p?.battery_v!=null)notes.push('Chưa đặt ngưỡng bình yếu.');if(visibleErrors.length)notes.push('Thiết bị: '+visibleErrors.join(', '));
     $('configuration-note').textContent=notes.join(' ');$('configuration-note').hidden=!notes.length;
-    $('email-status').textContent=s.smtp_configured?`${s.email_pending} email chờ gửi`:'';
     const fixes=history.filter(x=>x.gps_valid);if(route)route.setLatLngs(fixes.map(x=>[x.latitude,x.longitude]));
     const latestFix = p?.gps_valid ? p : null;
     const currentFix = s.connection === 'online' && !p?.is_replay ? latestFix : null;
@@ -169,10 +163,9 @@ async function refresh(){
     if (!cloudDashboard) $('csv-link').href=`/api/v1/history.csv?start=${start}`;
     const estimated=history.filter(x=>x.time_source==='received').length;
     $('time-note').textContent=estimated?`${estimated} mẫu dùng giờ máy chủ nhận. Với bản tin gửi lại từ bộ nhớ ESP32, giờ nhận có thể muộn hơn giờ đo.`:'';$('time-note').hidden=!estimated;
-    $('test-email').hidden=!s.smtp_configured;
     $('alerts').replaceChildren();
     if(!alerts.length){const el=document.createElement('p');el.className='muted';el.textContent='Chưa có cảnh báo.';$('alerts').append(el);}
-    for (const alert of alerts) $('alerts').append(renderAlert(alert, s.smtp_configured));
+    for (const alert of alerts) $('alerts').append(renderAlert(alert));
   }catch(e){notice(e.message+' Dữ liệu đang hiển thị có thể đã cũ.');$('connection').textContent='Không kết nối server';$('connection').classList.add('offline');}finally{
     refreshing = false;
     if (refreshQueued) { refreshQueued = false; scheduleLiveRefresh(); }
@@ -180,7 +173,6 @@ async function refresh(){
 }
 $('login-form').addEventListener('submit',async e=>{e.preventDefault();const form=new FormData(e.target);const button=e.target.querySelector('button');button.disabled=true;try{const r=await api('login',{method:'POST',body:JSON.stringify(Object.fromEntries(form))});csrf=r.csrf;e.target.password.value='';$('login-error').textContent='';await openDashboard();}catch(err){$('login-error').textContent=err.message;}finally{button.disabled=false;}});
 $('logout').onclick=async()=>{try{await api('logout',{method:'POST'});csrf='';showLogin();}catch(e){notice(e.message);}};
-$('arm-toggle').onclick=async()=>{if(!state)return;$('arm-toggle').disabled=true;try{await api('settings',{method:'PUT',body:JSON.stringify({armed:!state.settings.armed})});await refresh();}catch(e){notice(e.message);}finally{$('arm-toggle').disabled=false;}};
 $('history-range').onchange=refresh;
 $('csv-link').addEventListener('click', async event => {
   if (!cloudDashboard) return;
@@ -198,7 +190,6 @@ $('csv-link').addEventListener('click', async event => {
     notice(error.message);
   }
 });
-$('test-email').onclick=async()=>{$('test-email').disabled=true;try{await api('test-email',{method:'POST'});notice('Đã đưa email thử vào hàng đợi; trạng thái gửi hiện trong nhật ký cảnh báo.');}catch(e){notice(e.message);}finally{$('test-email').disabled=false;}};
 async function initDashboard() {
   const form = $('login-form');
   const button = form.querySelector('button');

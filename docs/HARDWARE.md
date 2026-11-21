@@ -87,7 +87,7 @@ Khi đã đỗ và đứng yên 2 phút, firmware gửi bản tin `parked`, ch�
 
 ## 4b. Hướng lắp MPU6050 (phát hiện xe ngã)
 
-Firmware chỉ đo nghiêng trái/phải quanh trục dọc thân xe. Lắp mạch GY-521 sao cho **mũi tên X in trên mạch chỉ về đầu xe** (mặt chip ngửa lên hay úp xuống đều được). Lắp xong, dựng xe thẳng rồi bật chống trộm (hoặc lệnh Serial `TILT_ZERO`) để lưu tư thế chuẩn. Nghiêng xe sang trái: web phải báo "trái"; nếu báo "phải", đổi `MPU_ROLL_SIGN` thành `-1` trong `include/project_config.h`.
+Firmware chỉ đo nghiêng trái/phải quanh trục dọc thân xe. Lắp mạch GY-521 sao cho **mũi tên X in trên mạch chỉ về đầu xe** (mặt chip ngửa lên hay úp xuống đều được). Lắp xong, dựng xe thẳng rồi gửi lệnh Serial `TILT_ZERO` để lưu tư thế chuẩn. Nghiêng xe sang trái: web phải báo "trái"; nếu báo "phải", đổi `MPU_ROLL_SIGN` thành `-1` trong `include/project_config.h`.
 
 ## 5. Quy tắc an toàn
 

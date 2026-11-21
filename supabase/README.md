@@ -51,8 +51,7 @@ Hàm trả về `{"accepted", "duplicate", "ack", "server_time", "settings"}`, �
 2. Từ thư mục project chạy `.\scripts\start-server.ps1 -Supabase` và mở
    `http://127.0.0.1:8000`. Dùng email/mật khẩu Supabase Auth ở bước 2.
    Nếu cổng 8000 đang bận, thêm `-Port 8002`.
-3. Dashboard đọc dữ liệu, cảnh báo và lịch sử từ Supabase. Nút chống trộm
-   cập nhật Supabase và chờ ESP32 báo lại phiên bản cấu hình đã áp dụng.
+3. Dashboard đọc dữ liệu, cảnh báo và lịch sử từ Supabase.
    Bản CSV lấy tối đa 1.000 mẫu gần nhất trong khoảng chọn.
 
 ## Cấu hình ESP32 gửi 4G

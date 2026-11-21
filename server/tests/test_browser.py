@@ -56,18 +56,15 @@ def test_dashboard_desktop_mobile_and_control(tmp_path):
             expect(page.locator('#temperature')).to_have_text('31.2 °C')
             expect(page.locator('#configuration-note')).to_contain_text('SIMULATED_DATA')
             expect(page.locator('#battery-note')).to_have_text('Dữ liệu mô phỏng')
-            expect(page.locator('#test-email')).to_be_hidden()
+            expect(page.locator('#test-email')).to_have_count(0)
+            expect(page.locator('#arm-toggle')).to_have_count(0)
             expect(page.locator('.leaflet-marker-icon')).to_have_count(1)
             expect(page.locator('#position-current')).to_contain_text('10.777010')
             expect(page.locator('#position-old')).to_contain_text('10.777000')
-            page.get_by_role('button',name='Bật chống trộm',exact=True).click()
-            expect(page.locator('#guard-state')).to_contain_text('đang bật')
-            expect(page.locator('#guard-applied')).to_contain_text('Đang chờ')
             with httpx.Client(base_url=base) as client:
-                payload.update(seq=12,armed=True,config_revision=1,motion=True)
-                client.post('/api/v1/telemetry',json=payload,headers={'Authorization':'Bearer '+cfg.device_token})
-            expect(page.locator('#guard-applied')).to_have_text('Thiết bị đã xác nhận.',timeout=10000)
-            expect(page.locator('#alerts')).to_contain_text('movement')
+                payload.update(seq=12, fallen=True, tilt_deg=70)
+                assert client.post('/api/v1/telemetry',json=payload,headers={'Authorization':'Bearer '+cfg.device_token}).status_code==200
+            expect(page.locator('#alerts')).to_contain_text('Xe bị ngã', timeout=10000)
             expect(page.locator('.alert-locations p').first).to_contain_text('Vị trí hiện tại (lúc cảnh báo)')
             expect(page.locator('.alert-locations p').first.get_by_role('link')).to_be_visible()
             output=Path('data/qa');output.mkdir(parents=True,exist_ok=True)
@@ -102,12 +99,11 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
     server = uvicorn.Server(uvicorn.Config(app, log_level='error'))
     thread = threading.Thread(target=lambda: server.run(sockets=[sock]), daemon=True)
     thread.start()
-    state = {'admin': False, 'refreshes': 0, 'logouts': 0, 'history_reads': 0,
-             'settings': {'armed': False, 'revision': 0, 'low_battery_v': None}}
+    state = {'admin': False, 'refreshes': 0, 'logouts': 0, 'history_reads': 0}
     timestamp = datetime.now(timezone.utc).isoformat()
     sample = dict(sample_at=timestamp, received_at=timestamp, temperature_c=31.2, battery_v=12.5,
                   mode='bench', armed=False, config_revision=0, next_report_s=5,
-                  errors=['IGNITION_NOT_CONNECTED', 'GPS_NO_FRESH_FIX'])
+                  errors=['IGNITION_NOT_CONNECTED', 'GPS_NO_FRESH_FIX', 'ADC_NOT_CALIBRATED'])
     sockets = []
 
     def mock_realtime(socket):
@@ -137,8 +133,8 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
         path = urlsplit(request.url).path
         headers = {
             'Access-Control-Allow-Origin': base,
-            'Access-Control-Allow-Headers': 'apikey, authorization, content-type, prefer',
-            'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
+            'Access-Control-Allow-Headers': 'apikey, authorization, content-type',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         }
         if request.method == 'OPTIONS':
             route.fulfill(status=204, headers=headers)
@@ -164,10 +160,7 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
         elif path == '/rest/v1/device_latest':
             result = [{'telemetry': sample}]
         elif path == '/rest/v1/settings':
-            if request.method == 'PATCH':
-                assert request.post_data_json == {'armed': True}
-                state['settings'].update(armed=True, revision=1)
-            result = [state['settings']]
+            result = [{'low_battery_v': None}]
         elif path == '/rest/v1/telemetry':
             state['history_reads'] += 1
             result = [sample]
@@ -212,12 +205,15 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             expect(page.locator('#battery')).to_have_text('13.10 V', timeout=2500)
             expect(page.locator('#alerts')).to_contain_text('Cloud movement')
             expect(page.locator('#alerts')).to_contain_text('Gửi lại từ bộ nhớ ESP32')
-            expect(page.locator('#alerts .mail')).to_have_text('Email chưa cấu hình')
+            expect(page.locator('#alerts .mail')).to_have_count(0)
+            expect(page.locator('#arm-toggle')).to_have_count(0)
             locations = page.locator('.alert-locations p')
             expect(locations.nth(0)).to_have_text('Vị trí hiện tại (lúc cảnh báo): GPS chưa có tọa độ')
             expect(locations.nth(1)).to_contain_text('Vị trí cũ (13:16:04 21/11/2026)')
             expect(locations.nth(1).get_by_role('link')).to_have_attribute('href', 'https://maps.google.com/?q=10.777,106.701')
-            expect(page.locator('#configuration-note')).to_contain_text('GPS_NO_FRESH_FIX')
+            expect(page.locator('#gps-state')).to_have_text('GPS chưa có vị trí hợp lệ')
+            expect(page.locator('#battery-note')).to_contain_text('Chưa hiệu chuẩn ADC')
+            expect(page.locator('#configuration-note')).not_to_contain_text('GPS_NO_FRESH_FIX')
             expect(page.locator('#configuration-note')).not_to_contain_text('IGNITION_NOT_CONNECTED')
             page.reload()
             expect(page.locator('#temperature')).to_have_text('31.2 °C')
@@ -234,12 +230,6 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             assert state['refreshes'] == 1
             assert page.evaluate('key => JSON.parse(sessionStorage.getItem(key)).refresh_token',
                                  key) == 'rotated-refresh-token'
-            page.locator('#arm-toggle').click()
-            expect(page.locator('#guard-applied')).to_contain_text('Đang chờ')
-            sample.update(armed=True, config_revision=1)
-            expect(page.locator('#update-mode')).to_have_text('Cập nhật trực tiếp')
-            emit_telemetry()
-            expect(page.locator('#guard-applied')).to_contain_text('đã xác nhận', timeout=10000)
             with page.expect_download() as download:
                 page.locator('#csv-link').click()
             assert '31.2' in Path(download.value.path()).read_text()
