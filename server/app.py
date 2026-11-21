@@ -114,7 +114,7 @@ class Telemetry(BaseModel):
     tilt_deg: float | None = Field(default=None, ge=-180, le=180)  # signed lean: + left, - right
     fallen: bool = False
     signal_dbm: int | None = Field(default=None, ge=-150, le=0)
-    next_report_s: int = Field(default=5, ge=5, le=86400)
+    next_report_s: int = Field(default=5, ge=1, le=86400)
     errors: list[str] = Field(default_factory=list, max_length=12)
 
     @model_validator(mode="after")

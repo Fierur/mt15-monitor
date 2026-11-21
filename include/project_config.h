@@ -41,7 +41,7 @@
 #define MODEM_TEST_CA_PEM ""
 #endif
 #include "hardware.h"
-constexpr unsigned long REPORT_MS=5000;
+constexpr unsigned long REPORT_MS=1000;
 constexpr unsigned long PARK_REPORT_SECONDS=900;
 constexpr unsigned long STILL_MS=120000;
 constexpr unsigned long MOTION_EVENT_MS=5000;

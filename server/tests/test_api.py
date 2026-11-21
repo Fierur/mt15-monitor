@@ -71,9 +71,10 @@ def test_gps_validation_and_wrong_device(setup):
 def test_replay_does_not_overwrite_current(setup):
     _,_,c=setup
     login(setup)
-    send(setup,sample(5,battery_v=12.4))
+    assert send(setup,sample(5,battery_v=12.4,next_report_s=1)).status_code==200
     send(setup,sample(2,battery_v=11.7,is_replay=True))
     assert c.get('/api/v1/status').json()['telemetry']['seq']==5
+    assert c.get('/api/v1/status').json()['telemetry']['next_report_s']==1
     assert len(c.get('/api/v1/history').json())==2
     send(setup,sample(3,battery_v=12.1))
     assert c.get('/api/v1/status').json()['telemetry']['seq']==5
