@@ -113,10 +113,24 @@ async function openDashboard(){
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors',referrerPolicy:'strict-origin-when-cross-origin'}).addTo(map);
     route=L.polyline([],{color:'#b5d854',weight:3}).addTo(map);
   } else if (!window.L) $('map').textContent='Không tải được thư viện bản đồ. Kiểm tra Internet rồi tải lại trang.';
-  if (!chart && window.Chart) chart=new Chart($('history-chart'),{type:'line',data:{labels:[],datasets:[
-    {label:'Điện áp (V)',data:[],borderColor:'#c6f467',yAxisID:'v',pointRadius:0,borderWidth:2,spanGaps:false},
-    {label:'Nhiệt độ (°C)',data:[],borderColor:'#78b8ff',yAxisID:'t',pointRadius:0,borderWidth:2,spanGaps:false}
-  ]},options:{animation:false,responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:'#aab7c7',usePointStyle:true}}},scales:{x:{ticks:{color:'#8997aa',maxTicksLimit:5},grid:{display:false}},v:{position:'left',ticks:{color:'#c6f467'},grid:{color:'#293342'}},t:{position:'right',ticks:{color:'#78b8ff'},grid:{drawOnChartArea:false}}}}});
+  if (!chart && window.Chart) {
+    chart = new Chart($('history-chart'), {
+      type: 'line',
+      data: { labels: [], datasets: [{
+        label: 'Nhiệt độ (°C)', data: [], borderColor: '#78b8ff',
+        pointRadius: 0, borderWidth: 2, spanGaps: false,
+      }] },
+      options: {
+        animation: false, responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { color: '#aab7c7', usePointStyle: true } } },
+        scales: {
+          x: { ticks: { color: '#8997aa', maxTicksLimit: 5 }, grid: { display: false } },
+          y: { ticks: { color: '#78b8ff' }, grid: { color: '#293342' } },
+        },
+      },
+    });
+  }
   setUpdateMode(false);
   try {
     unsubscribe = cloudDashboard?.subscribe(receiveRealtime, realtime => {
@@ -154,10 +168,6 @@ function renderStatus(s) {
     $('connection').classList.toggle('offline',['offline','never_seen'].includes(s.connection));
     $('last-update').textContent=p?`Cập nhật: ${when(s.received_at)} · ${s.age_s} giây trước${p.is_replay?' · bản tin gửi lại từ bộ nhớ ESP32':''}`:'Chưa nhận được dữ liệu từ thiết bị.';
     const errs=p?.errors||[];
-    $('battery').textContent=fmt(p?.battery_v,'V',2);
-    const batteryNote = errs.includes('ADC_SATURATED_OR_INVALID') ? 'Tín hiệu đo không hợp lệ · kiểm tra cầu phân áp nối vào P34'
-      : 'Chưa nhận số đo điện áp từ thiết bị';
-    $('battery-note').textContent=p?.battery_v==null?batteryNote:errs.includes('SIMULATED_DATA')?'Dữ liệu mô phỏng':errs.includes('ADC_ABOVE_ACCURATE_RANGE')?'Vượt vùng ADC chính xác · giá trị tham khảo':errs.includes('ADC_NOT_CALIBRATED')?'Chưa hiệu chuẩn ADC · giá trị tham khảo':'Đã hiệu chuẩn trên thiết bị';
     $('signal').textContent=p?.signal_dbm!=null?`Sóng 4G: ${p.signal_dbm} dBm`:'';$('temperature').textContent=fmt(p?.temperature_c,'°C');$('speed').textContent=fmt(p?.speed_kmh,'km/h');
     $('vehicle-mode').textContent=p?(p.fallen?(p.tilt_deg>0?'NGÃ BÊN TRÁI':p.tilt_deg<0?'NGÃ BÊN PHẢI':'XE BỊ NGÃ'):(modes[p.mode]||p.mode)):'—';$('vehicle-mode').classList.toggle('danger',!!p?.fallen);
     $('motion-state').textContent=p?`${p.motion?'Có chuyển động':'Chưa phát hiện chuyển động'} · Nghiêng: ${p.tilt_deg==null?'—':Math.abs(Math.round(p.tilt_deg))<2?'thẳng':Math.abs(Math.round(p.tilt_deg))+'° '+(p.tilt_deg>0?'trái':'phải')}${p.ignition==null?'':' · Khóa: '+(p.ignition?'bật':'tắt')}`:'Chưa có dữ liệu chuyển động';
@@ -202,7 +212,11 @@ function updateHistory(rows) {
 function renderHistory(history, start) {
     fixes=history.filter(x=>x.gps_valid);if(route)route.setLatLngs(fixes.map(x=>[x.latitude,x.longitude]));
     renderPosition();
-    if(chart){chart.data.labels=history.map(x=>new Date(x.sample_at*1000).toLocaleTimeString('vi-VN'));chart.data.datasets[0].data=history.map(x=>x.battery_v);chart.data.datasets[1].data=history.map(x=>x.temperature_c);const hasV=history.some(x=>x.battery_v!=null);chart.data.datasets[0].hidden=!hasV;chart.options.scales.v.display=hasV;chart.update();}
+    if (chart) {
+      chart.data.labels = history.map(x => new Date(x.sample_at * 1000).toLocaleTimeString('vi-VN'));
+      chart.data.datasets[0].data = history.map(x => x.temperature_c);
+      chart.update();
+    }
     if (!cloudDashboard) $('csv-link').href=`/api/v1/history.csv?start=${start}`;
     const estimated=history.filter(x=>x.time_source==='received').length;
     $('time-note').textContent=estimated?`${estimated} mẫu dùng giờ máy chủ nhận. Với bản tin gửi lại từ bộ nhớ ESP32, giờ nhận có thể muộn hơn giờ đo.`:'';$('time-note').hidden=!estimated;

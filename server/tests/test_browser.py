@@ -52,10 +52,10 @@ def test_dashboard_desktop_mobile_and_control(tmp_path):
             page.locator('input[name=password]').fill(cfg.admin_password)
             page.get_by_role('button',name='Vào bảng điều khiển →').click()
             expect(page.locator('#dashboard')).to_be_visible()
-            expect(page.locator('#battery')).to_have_text('12.60 V')
+            expect(page.locator('#battery')).to_have_count(0)
             expect(page.locator('#temperature')).to_have_text('31.2 °C')
             expect(page.locator('#configuration-note')).to_contain_text('SIMULATED_DATA')
-            expect(page.locator('#battery-note')).to_have_text('Dữ liệu mô phỏng')
+            assert page.evaluate("Chart.getChart('history-chart').data.datasets.map(item => item.label)") == ['Nhiệt độ (°C)']
             expect(page.locator('#test-email')).to_have_count(0)
             expect(page.locator('#arm-toggle')).to_have_count(0)
             expect(page.locator('.leaflet-marker-icon')).to_have_count(1)
@@ -201,16 +201,16 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
                 page.locator('#login-form button').click()
             expect(page.locator('#temperature')).to_have_text('31.2 °C')
             expect(page.locator('#update-mode')).to_have_text('Cập nhật trực tiếp')
-            expect(page.locator('#battery')).to_have_text('12.50 V')
+            expect(page.locator('#battery')).to_have_count(0)
             reads_before_push = (state['status_reads'], state['history_reads'])
-            sample.update(id=2, seq=2, battery_v=13.1)
+            sample.update(id=2, seq=2, temperature_c=33.1)
             emit_telemetry(sample)
-            expect(page.locator('#battery')).to_have_text('13.10 V', timeout=1000)
-            replay = dict(sample, id=3, seq=0, is_replay=True, battery_v=10.0,
+            expect(page.locator('#temperature')).to_have_text('33.1 °C', timeout=1000)
+            replay = dict(sample, id=3, seq=0, is_replay=True, temperature_c=28,
                           sample_at=(datetime.fromisoformat(timestamp) - timedelta(seconds=10)).isoformat())
             emit_telemetry(replay)
-            page.wait_for_function("Chart.getChart('history-chart').data.datasets[0].data.includes(10)")
-            expect(page.locator('#battery')).to_have_text('13.10 V')
+            page.wait_for_function("Chart.getChart('history-chart').data.datasets[0].data.includes(28)")
+            expect(page.locator('#temperature')).to_have_text('33.1 °C')
             assert (state['status_reads'], state['history_reads']) == reads_before_push
             expect(page.locator('#alerts')).to_contain_text('Cloud movement')
             expect(page.locator('#alerts')).to_contain_text('Gửi lại từ bộ nhớ ESP32')
@@ -221,11 +221,10 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             expect(locations.nth(1)).to_contain_text('Vị trí cũ (13:16:04 21/11/2026)')
             expect(locations.nth(1).get_by_role('link')).to_have_attribute('href', 'https://maps.google.com/?q=10.777,106.701')
             expect(page.locator('#gps-state')).to_have_text('GPS chưa có vị trí hợp lệ')
-            expect(page.locator('#battery-note')).to_contain_text('Chưa hiệu chuẩn ADC')
             expect(page.locator('#configuration-note')).not_to_contain_text('GPS_NO_FRESH_FIX')
             expect(page.locator('#configuration-note')).not_to_contain_text('IGNITION_NOT_CONNECTED')
             page.reload()
-            expect(page.locator('#temperature')).to_have_text('31.2 °C')
+            expect(page.locator('#temperature')).to_have_text('33.1 °C')
             expect(page.locator('#login-view')).to_be_hidden()
             assert state['refreshes'] == 0
             key = 'mt15:auth:' + cloud + ':' + cfg.device_id
@@ -235,13 +234,13 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
                 sessionStorage.setItem(key, JSON.stringify(session));
             }""", key)
             page.reload()
-            expect(page.locator('#temperature')).to_have_text('31.2 °C')
+            expect(page.locator('#temperature')).to_have_text('33.1 °C')
             assert state['refreshes'] == 1
             assert page.evaluate('key => JSON.parse(sessionStorage.getItem(key)).refresh_token',
                                  key) == 'rotated-refresh-token'
             with page.expect_download() as download:
                 page.locator('#csv-link').click()
-            assert '31.2' in Path(download.value.path()).read_text()
+            assert '33.1' in Path(download.value.path()).read_text()
             page.locator('#logout').click()
             expect(page.locator('#login-view')).to_be_visible()
             assert state['logouts'] == 1
