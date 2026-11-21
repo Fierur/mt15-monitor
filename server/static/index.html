@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   <script defer src="/static/vendor/leaflet.js"></script>
   <script defer src="/static/vendor/chart.umd.js"></script>
+  <script defer src="/static/vendor/supabase.js"></script>
   <script defer src="/static/supabase-dashboard.js"></script>
   <script defer src="/static/app.js"></script>
 </head>
@@ -38,7 +39,7 @@
       <section class="two-column"><article class="panel map-panel"><div class="section-title"><h2>Hành trình</h2><span id="satellites" class="muted">— vệ tinh</span></div><div id="map"><p class="map-placeholder">Đang tải bản đồ…</p></div><p id="position-info" class="muted">Chỉ hiển thị vị trí GPS hợp lệ.</p></article>
       <article class="panel"><div class="section-title"><h2>Lịch sử thông số</h2><select id="history-range" aria-label="Khoảng thời gian"><option value="1">1 giờ</option><option value="24" selected>24 giờ</option><option value="168">7 ngày</option></select></div><div class="chart-box"><canvas id="history-chart" aria-label="Biểu đồ điện áp và nhiệt độ"></canvas></div><p class="muted">Tối đa 1.000 mẫu gần nhất trong khoảng chọn. Thời gian theo đồng hồ thiết bị (GPS/NTP); nếu thiết bị chưa đồng bộ giờ, dùng thời điểm server nhận.</p><p id="time-note" class="muted" hidden></p><a id="csv-link" class="download" href="/api/v1/history.csv">Tải dữ liệu CSV ↗</a></article></section>
       <section class="panel"><div class="section-title"><h2>Nhật ký cảnh báo</h2><div class="title-actions"><span id="email-status" class="muted"></span><button id="test-email" class="quiet" type="button">Gửi email thử</button></div></div><div id="alerts" class="alerts"><p class="muted">Chưa có cảnh báo.</p></div></section>
-      <footer><span>MT15 / Đồ án IoT</span><span id="device-id"></span><span id="signal"></span><span id="session-note">Dữ liệu riêng tư · phiên đăng nhập 12 giờ</span></footer>
+      <footer><span>MT15 / Đồ án IoT</span><span id="device-id"></span><span id="signal"></span><span id="update-mode" hidden></span><span id="session-note">Dữ liệu riêng tư · phiên đăng nhập 12 giờ</span></footer>
     </main>
   </div>
 </body>

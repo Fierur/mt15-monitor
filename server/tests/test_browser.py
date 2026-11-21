@@ -1,4 +1,5 @@
 """Opt-in real-browser acceptance tests against an isolated temporary database."""
+import json
 import os
 import socket
 import threading
@@ -97,12 +98,35 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
     server = uvicorn.Server(uvicorn.Config(app, log_level='error'))
     thread = threading.Thread(target=lambda: server.run(sockets=[sock]), daemon=True)
     thread.start()
-    state = {'admin': False, 'refreshes': 0, 'logouts': 0,
+    state = {'admin': False, 'refreshes': 0, 'logouts': 0, 'history_reads': 0,
              'settings': {'armed': False, 'revision': 0, 'low_battery_v': None}}
     timestamp = datetime.now(timezone.utc).isoformat()
-    sample = dict(sample_at=timestamp, received_at=timestamp, temperature_c=31.2,
+    sample = dict(sample_at=timestamp, received_at=timestamp, temperature_c=31.2, battery_v=12.5,
                   mode='bench', armed=False, config_revision=0, next_report_s=5,
                   errors=['IGNITION_NOT_CONNECTED', 'GPS_NO_FRESH_FIX'])
+    sockets = []
+
+    def mock_realtime(socket):
+        def respond_message(message):
+            join_ref, ref, topic, event, payload = json.loads(message)
+            response = {}
+            if event == 'phx_join':
+                assert payload['access_token'] == 'user-token'
+                bindings = payload['config']['postgres_changes']
+                assert all(binding['filter'] == 'device_id=eq.mt15-001' for binding in bindings)
+                response['postgres_changes'] = [dict(binding, id=index) for index, binding in enumerate(bindings, 1)]
+                telemetry_id = next(binding['id'] for binding in response['postgres_changes'] if binding['table'] == 'telemetry')
+                sockets.append((socket, join_ref, topic, telemetry_id))
+            socket.send(json.dumps([join_ref, ref, topic, 'phx_reply', dict(status='ok', response=response)]))
+
+        socket.on_message(respond_message)
+
+    def emit_telemetry():
+        socket, join_ref, topic, telemetry_id = sockets[-1]
+        socket.send(json.dumps([join_ref, None, topic, 'postgres_changes', {
+            'ids': [telemetry_id], 'data': dict(schema='public', table='telemetry', type='INSERT',
+                                              commit_timestamp=timestamp, columns=[], record=sample),
+        }]))
 
     def respond(route):
         request = route.request
@@ -141,6 +165,7 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
                 state['settings'].update(armed=True, revision=1)
             result = [state['settings']]
         elif path == '/rest/v1/telemetry':
+            state['history_reads'] += 1
             result = [sample]
         elif path == '/rest/v1/alerts':
             result = [{'id': 1, 'created_at': timestamp, 'message': 'Cloud movement', 'mail_status': 'pending'}]
@@ -160,6 +185,7 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             context.route('**/*', lambda route: route.continue_()
                           if route.request.url.startswith(base) else route.abort())
             context.route(cloud + '/**', respond)
+            context.route_web_socket('wss://mt15-test.supabase.co/**', mock_realtime)
             page = context.new_page()
             page.goto(base)
             expect(page.locator('input[name=username]')).to_have_attribute('type', 'email')
@@ -168,8 +194,14 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             page.locator('#login-form button').click()
             expect(page.locator('#login-error')).to_contain_text('quản trị MT15')
             state['admin'] = True
-            page.locator('#login-form button').click()
+            with page.expect_response(lambda response: '/rest/v1/telemetry?' in response.url and state['history_reads'] >= 2):
+                page.locator('#login-form button').click()
             expect(page.locator('#temperature')).to_have_text('31.2 °C')
+            expect(page.locator('#update-mode')).to_have_text('Cập nhật trực tiếp')
+            expect(page.locator('#battery')).to_have_text('12.50 V')
+            sample['battery_v'] = 13.1
+            emit_telemetry()
+            expect(page.locator('#battery')).to_have_text('13.10 V', timeout=2500)
             expect(page.locator('#alerts')).to_contain_text('Cloud movement')
             expect(page.locator('#configuration-note')).to_contain_text('GPS_NO_FRESH_FIX')
             expect(page.locator('#configuration-note')).not_to_contain_text('IGNITION_NOT_CONNECTED')
@@ -191,6 +223,8 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             page.locator('#arm-toggle').click()
             expect(page.locator('#guard-applied')).to_contain_text('Đang chờ')
             sample.update(armed=True, config_revision=1)
+            expect(page.locator('#update-mode')).to_have_text('Cập nhật trực tiếp')
+            emit_telemetry()
             expect(page.locator('#guard-applied')).to_contain_text('đã xác nhận', timeout=10000)
             with page.expect_download() as download:
                 page.locator('#csv-link').click()

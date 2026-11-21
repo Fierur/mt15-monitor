@@ -6,7 +6,7 @@ Khớp với firmware hiện tại (`include/hardware.h`). Làm đúng **thứ t
 
 - ESP32 cắm trên đế xanh, 2 mạch hạ áp LM2596 (buck 1: 5,0 V; buck 2: 4,0 V cho modem, chỉ cần nếu bo modem nhận nguồn 3,7–4,2 V)
 - MPU6050 (GY-521), GPS NEO-6M + anten, DS18B20 (dây đỏ VCC / đen GND / vàng hoặc cam DATA)
-- Điện trở 4,7 kΩ (kéo lên DS18B20). Không đo điện áp bình (chủ xe quyết định 24/10/2026), nên không cần cầu phân áp
+- Điện trở 4,7 kΩ kéo lên DS18B20 và cặp điện trở 10 kΩ / 2,2 kΩ đo điện áp bình
 - A7680C + SIM có data (đã tắt mã PIN) + anten LTE
 - Cầu chì 2 A có đế, tụ 1000 µF (cho modem), đồng hồ vạn năng
 - Băng keo điện, kìm tuốt dây (hoặc kéo). Mối nối làm bằng cách xoắn dây rồi quấn băng keo; có mỏ hàn thì hàn thêm thiếc cho chắc vì xe rung
@@ -16,7 +16,7 @@ Khớp với firmware hiện tại (`include/hardware.h`). Làm đúng **thứ t
 ```text
 BÌNH 12V (+) ── CẦU CHÌ 2A ──┬── IN+ Buck 1 ── OUT+ = ĐƯỜNG 5V
                              └── IN+ Buck 2 ── OUT+ = ĐƯỜNG 4V (chỉ cho modem)
-(Bình chỉ nối vào mạch hạ áp; mọi mạch khác lấy điện từ mạch hạ áp.)
+(Các module lấy nguồn qua mạch hạ áp. Cầu phân áp lấy tín hiệu ở IN+ buck 1.)
 BÌNH 12V (−) ── IN− Buck 1, IN− Buck 2 ── ĐƯỜNG GND
 
 ĐƯỜNG 5V  : cọc 5V đế xanh · VCC MPU6050 · VCC GPS
@@ -63,7 +63,7 @@ Breadboard chỉ để thử trên bàn; lên xe thì hàn.
 | GPS NEO-6M | RXD | **G17** |
 | GPS NEO-6M | PPS | để trống |
 | DS18B20 | DATA (vàng/cam) | **P4** + trở 4,7 kΩ lên 3V3 |
-| — | GPIO34 (P34) | Không nối (không đo điện áp bình) |
+| Cầu phân áp | Điểm giữa 10 kΩ / 2,2 kΩ | **P34**. Nối `IN+ buck 1 → 10 kΩ → P34 → 2,2 kΩ → GND`. |
 | A7680C | TXD | **P26** |
 | A7680C | RXD | **P27** |
 | A7680C | RST (b2) | **Không nối** (nối GND sẽ giữ modem ở trạng thái reset). Bo không có chân PWRKEY; modem tự bật khi có điện |

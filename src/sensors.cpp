@@ -109,7 +109,8 @@ void readBattery(){
   if(!BATTERY_SENSE_ENABLED){battery=NAN;return;}
   uint32_t millivolts=0;unsigned maxRaw=0;
   for(int i=0;i<32;++i){millivolts+=analogReadMilliVolts(BATTERY_PIN);maxRaw=max(maxRaw,(unsigned)analogRead(BATTERY_PIN));}
-  battery=maxRaw>=4080?NAN:millivolts/32000.0f*(DIVIDER_TOP_OHMS+DIVIDER_BOTTOM_OHMS)/DIVIDER_BOTTOM_OHMS*BATTERY_GAIN+BATTERY_OFFSET_V;
+  const float pinVolts=millivolts/32000.0f;
+  battery=maxRaw>=4080||pinVolts<0.15f?NAN:pinVolts*(DIVIDER_TOP_OHMS+DIVIDER_BOTTOM_OHMS)/DIVIDER_BOTTOM_OHMS*BATTERY_GAIN+BATTERY_OFFSET_V;
 }
 
 void syncClockFromGps(unsigned long now){

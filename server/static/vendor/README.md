@@ -11,5 +11,6 @@ Tải về một lần từ unpkg ngày 24/10/2026; hash SHA-256 (base64) đã �
 | images/marker-icon-2x.png | leaflet@1.9.4 | 00179c4c1ee830d3a108412ae0d294f55776cfeb085c60129a39aa6fc4ae2528 |
 | images/marker-shadow.png | leaflet@1.9.4 | 264f5c640339f042dd729062cfc04c17f8ea0f29882b538e3848ed8f10edb4da |
 | chart.umd.js | chart.js@4.4.8 `dist/chart.umd.js` | e4cf4d144b222634f2e64ff707cd57b953f8de4b65b231cd5ac6bde114648e4d |
+| supabase.js | @supabase/supabase-js@2.119.2 `dist/umd/supabase.js` (npm) | 8816af04d9915dbba1882d6f84f0b402dc40268063a63d9c66d24f52f371c263 |
 
-Giấy phép: Leaflet (BSD-2-Clause), Chart.js (MIT). Bản đồ nền OpenStreetMap vẫn cần Internet.
+Giấy phép: Leaflet (BSD-2-Clause), Chart.js (MIT), [Supabase JS (MIT)](supabase.LICENSE.txt). Bản đồ nền OpenStreetMap vẫn cần Internet.

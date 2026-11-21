@@ -17,7 +17,7 @@ Cập nhật: **24/10/2026**. Cập nhật file này sau mỗi phiên làm việ
 
 Chú giải: ✅ đã chạy thật và kiểm chứng · 🧪 kiểm thử tự động / mô phỏng · 🔨 chỉ build được, chưa chạy · ⏳ chờ phần cứng · ❓ chờ thông tin từ người dùng
 
-> **Thay đổi phạm vi (24/10/2026, chủ xe quyết định):** không đo điện áp bình. Không lắp cầu phân áp, GPIO34 bỏ trống, firmware `BATTERY_SENSE_ENABLED 0`, server `LOW_BATTERY_VOLTAGE` để trống. Hệ quả: website không hiện điện áp bình, không có cảnh báo bình yếu, không dùng được cắt nguồn khi bình yếu. Muốn bật lại: lắp cầu 10k/2,2k vào cọc IN+ của buck 1 → GPIO34, đặt cờ về 1, hiệu chuẩn.
+> **Đo điện áp bình được bật lại trong firmware.** ESP32 cần nối cầu phân áp 10 kΩ / 2,2 kΩ vào P34 theo [hướng dẫn nối dây](WIRING.md), nạp firmware mới và hiệu chuẩn theo [hướng dẫn ADC](CALIBRATION.md).
 >
 > Modem A7680C: bo có các chân VCC, RST, RXD, TXD, GND (cột b) và RING, DTR, MIC, SPK (cột i), **không có PWRKEY**. RST không được nối GND.
 

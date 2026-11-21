@@ -1,6 +1,6 @@
 # Supabase cho MT15 Monitor
 
-Project: `bfrzafaaduvrnbppjdbr`. ESP32 gửi qua A7680C đến Supabase. Dashboard chạy trên laptop và truy vấn Supabase mỗi 5 giây. ESP32 vẫn gửi được khi tắt laptop.
+Project `bfrzafaaduvrnbppjdbr`. ESP32 gửi qua A7680C đến Supabase. Dashboard cập nhật qua Supabase Realtime và tự truy vấn mỗi 5 giây khi mất kết nối WebSocket. ESP32 vẫn gửi được khi tắt laptop.
 
 ## 1. Tạo bảng
 1. Supabase Dashboard → **SQL Editor** → **New query**.

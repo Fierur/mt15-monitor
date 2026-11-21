@@ -248,7 +248,10 @@ def create_app(config: Config | None = None, *, worker=True):
     app = FastAPI(title="MT15 Monitor", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.store, app.state.maintenance = store, maintenance
     app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
-    csp = CSP.replace("connect-src 'self';", f"connect-src 'self' {cfg.supabase_url};") if cfg.supabase_url else CSP
+    csp = CSP
+    if cfg.supabase_url:
+        realtime_url = "wss://" + cfg.supabase_url.removeprefix("https://")
+        csp = CSP.replace("connect-src 'self';", f"connect-src 'self' {cfg.supabase_url} {realtime_url};")
 
     @app.middleware("http")
     async def security_headers(request, call_next):

@@ -12,10 +12,9 @@
 #define GPS_TX_PIN 17 // ESP TX -> GPS RX
 #define TEMP_PIN 4
 #define BATTERY_PIN 34
-// The owner chose not to measure battery voltage (24/10/2026): GPIO34 is left
-// unconnected, so its floating reading must never be reported.
+// Connect GPIO34 to the midpoint of the 10k / 2.2k battery voltage divider.
 #ifndef BATTERY_SENSE_ENABLED
-#define BATTERY_SENSE_ENABLED 0
+#define BATTERY_SENSE_ENABLED 1
 #endif
 // GPIO23 has an unidentified wire: deliberately never driven by this firmware.
 // Actual installed resistor is 10k. Change only AFTER changing hardware.

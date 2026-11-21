@@ -5,6 +5,7 @@ function createSupabaseDashboard(config) {
   const storageKey = 'mt15:auth:' + config.url + ':' + config.device_id;
   let session = restoreSession();
   let refreshInFlight = null;
+  let realtimeClient = null;
   const device = { device_id: 'eq.' + config.device_id };
   const time = value => Date.parse(value) / 1000;
   const sample = row => ({ ...row, sample_at: time(row.sample_at), received_at: time(row.received_at) });
@@ -24,6 +25,9 @@ function createSupabaseDashboard(config) {
 
   function saveSession(updated) {
     session = updated;
+    if (updated && realtimeClient) {
+      void realtimeClient.setAuth(updated.access_token).catch(() => {});
+    }
     try {
       if (updated) sessionStorage.setItem(storageKey, JSON.stringify(updated));
       else sessionStorage.removeItem(storageKey);
@@ -124,6 +128,30 @@ function createSupabaseDashboard(config) {
 
   return {
     clearSession() { saveSession(null); },
+    subscribe(onChange, onStatus) {
+      if (!window.supabase?.RealtimeClient || !session) return null;
+      const endpoint = config.url.replace(/^https:\/\//, 'wss://') + '/realtime/v1';
+      const client = new window.supabase.RealtimeClient(endpoint, { params: { apikey: config.key } });
+      realtimeClient = client;
+      const channel = client.channel('mt15:' + config.device_id);
+      for (const table of ['telemetry', 'settings', 'alerts']) {
+        channel.on('postgres_changes', {
+          event: '*', schema: 'public', table, filter: `device_id=eq.${config.device_id}`
+        }, onChange);
+      }
+      void accessToken().then(token => client.setAuth(token)).then(() => {
+        if (realtimeClient !== client) return;
+        channel.subscribe(status => {
+          if (realtimeClient === client) onStatus(status === 'SUBSCRIBED');
+        });
+      }).catch(() => {
+        if (realtimeClient === client) onStatus(false);
+      });
+      return () => {
+        if (realtimeClient === client) realtimeClient = null;
+        void client.removeChannel(channel).catch(() => {});
+      };
+    },
     async resume() {
       if (!session) return false;
       try {
