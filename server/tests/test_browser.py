@@ -4,7 +4,7 @@ import os
 import socket
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -99,9 +99,10 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
     server = uvicorn.Server(uvicorn.Config(app, log_level='error'))
     thread = threading.Thread(target=lambda: server.run(sockets=[sock]), daemon=True)
     thread.start()
-    state = {'admin': False, 'refreshes': 0, 'logouts': 0, 'history_reads': 0}
+    state = {'admin': False, 'refreshes': 0, 'logouts': 0, 'history_reads': 0, 'status_reads': 0}
     timestamp = datetime.now(timezone.utc).isoformat()
-    sample = dict(sample_at=timestamp, received_at=timestamp, temperature_c=31.2, battery_v=12.5,
+    sample = dict(id=1, boot_id='cloud-test', seq=1, is_replay=False,
+                  sample_at=timestamp, received_at=timestamp, temperature_c=31.2, battery_v=12.5,
                   mode='bench', armed=False, config_revision=0, next_report_s=5,
                   errors=['IGNITION_NOT_CONNECTED', 'GPS_NO_FRESH_FIX', 'ADC_NOT_CALIBRATED'])
     sockets = []
@@ -121,11 +122,11 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
 
         socket.on_message(respond_message)
 
-    def emit_telemetry():
+    def emit_telemetry(record):
         socket, join_ref, topic, telemetry_id = sockets[-1]
         socket.send(json.dumps([join_ref, None, topic, 'postgres_changes', {
             'ids': [telemetry_id], 'data': dict(schema='public', table='telemetry', type='INSERT',
-                                              commit_timestamp=timestamp, columns=[], record=sample),
+                                              commit_timestamp=timestamp, columns=[], record=record),
         }]))
 
     def respond(route):
@@ -158,6 +159,7 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
         elif path == '/rest/v1/admins':
             result = [{'user_id': 'admin-id'}] if state['admin'] else []
         elif path == '/rest/v1/device_latest':
+            state['status_reads'] += 1
             result = [{'telemetry': sample}]
         elif path == '/rest/v1/settings':
             result = [{'low_battery_v': None}]
@@ -200,9 +202,16 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             expect(page.locator('#temperature')).to_have_text('31.2 °C')
             expect(page.locator('#update-mode')).to_have_text('Cập nhật trực tiếp')
             expect(page.locator('#battery')).to_have_text('12.50 V')
-            sample['battery_v'] = 13.1
-            emit_telemetry()
-            expect(page.locator('#battery')).to_have_text('13.10 V', timeout=2500)
+            reads_before_push = (state['status_reads'], state['history_reads'])
+            sample.update(id=2, seq=2, battery_v=13.1)
+            emit_telemetry(sample)
+            expect(page.locator('#battery')).to_have_text('13.10 V', timeout=1000)
+            replay = dict(sample, id=3, seq=0, is_replay=True, battery_v=10.0,
+                          sample_at=(datetime.fromisoformat(timestamp) - timedelta(seconds=10)).isoformat())
+            emit_telemetry(replay)
+            page.wait_for_function("Chart.getChart('history-chart').data.datasets[0].data.includes(10)")
+            expect(page.locator('#battery')).to_have_text('13.10 V')
+            assert (state['status_reads'], state['history_reads']) == reads_before_push
             expect(page.locator('#alerts')).to_contain_text('Cloud movement')
             expect(page.locator('#alerts')).to_contain_text('Gửi lại từ bộ nhớ ESP32')
             expect(page.locator('#alerts .mail')).to_have_count(0)

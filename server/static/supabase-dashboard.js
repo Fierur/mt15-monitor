@@ -105,13 +105,7 @@ function createSupabaseDashboard(config) {
     return rows.reverse().map(sample);
   }
 
-  async function status() {
-    const [[latest], [settings]] = await Promise.all([
-      query('device_latest', { ...device, select: 'telemetry(*)', limit: 1 }),
-      query('settings', { ...device, select: 'low_battery_v', limit: 1 })
-    ]);
-    if (!settings) throw new Error('Không tìm thấy cấu hình thiết bị trên Supabase.');
-    const telemetry = latest?.telemetry ? sample(latest.telemetry) : null;
+  function statusFor(telemetry, lowBatteryVoltage) {
     const age = telemetry ? Math.max(0, Date.now() / 1000 - telemetry.received_at) : null;
     const online = telemetry && age <= Math.max(30, telemetry.next_report_s + 60);
     return {
@@ -119,11 +113,21 @@ function createSupabaseDashboard(config) {
       received_at: telemetry?.received_at, age_s: age === null ? null : Math.floor(age),
       connection: !telemetry ? 'never_seen' : !online ? 'offline'
         : telemetry.mode === 'parked' && telemetry.next_report_s >= 60 ? 'sleeping' : 'online',
-      low_battery_voltage: settings.low_battery_v
+      low_battery_voltage: lowBatteryVoltage
     };
   }
 
+  async function status() {
+    const [[latest], [settings]] = await Promise.all([
+      query('device_latest', { ...device, select: 'telemetry(*)', limit: 1 }),
+      query('settings', { ...device, select: 'low_battery_v', limit: 1 })
+    ]);
+    if (!settings) throw new Error('Không tìm thấy cấu hình thiết bị trên Supabase.');
+    return statusFor(latest?.telemetry ? sample(latest.telemetry) : null, settings.low_battery_v);
+  }
+
   return {
+    statusFor,
     clearSession() { saveSession(null); },
     subscribe(onChange, onStatus) {
       if (!window.supabase?.RealtimeClient || !session) return null;
@@ -133,8 +137,12 @@ function createSupabaseDashboard(config) {
       const channel = client.channel('mt15:' + config.device_id);
       for (const table of ['telemetry', 'settings', 'alerts']) {
         channel.on('postgres_changes', {
-          event: '*', schema: 'public', table, filter: `device_id=eq.${config.device_id}`
-        }, onChange);
+          event: table === 'telemetry' ? 'INSERT' : '*',
+          schema: 'public', table, filter: `device_id=eq.${config.device_id}`
+        }, change => {
+          if (realtimeClient !== client) return;
+          onChange(table === 'telemetry' ? sample(change.new) : null);
+        });
       }
       void accessToken().then(token => client.setAuth(token)).then(() => {
         if (realtimeClient !== client) return;
