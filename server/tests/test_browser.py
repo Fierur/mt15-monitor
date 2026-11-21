@@ -58,6 +58,8 @@ def test_dashboard_desktop_mobile_and_control(tmp_path):
             expect(page.locator('#battery-note')).to_have_text('Dữ liệu mô phỏng')
             expect(page.locator('#test-email')).to_be_hidden()
             expect(page.locator('.leaflet-marker-icon')).to_have_count(1)
+            expect(page.locator('#position-current')).to_contain_text('10.777010')
+            expect(page.locator('#position-old')).to_contain_text('10.777000')
             page.get_by_role('button',name='Bật chống trộm',exact=True).click()
             expect(page.locator('#guard-state')).to_contain_text('đang bật')
             expect(page.locator('#guard-applied')).to_contain_text('Đang chờ')
@@ -66,6 +68,8 @@ def test_dashboard_desktop_mobile_and_control(tmp_path):
                 client.post('/api/v1/telemetry',json=payload,headers={'Authorization':'Bearer '+cfg.device_token})
             expect(page.locator('#guard-applied')).to_have_text('Thiết bị đã xác nhận.',timeout=10000)
             expect(page.locator('#alerts')).to_contain_text('movement')
+            expect(page.locator('.alert-locations p').first).to_contain_text('Vị trí hiện tại (lúc cảnh báo)')
+            expect(page.locator('.alert-locations p').first.get_by_role('link')).to_be_visible()
             output=Path('data/qa');output.mkdir(parents=True,exist_ok=True)
             page.screenshot(path=str(output/'dashboard-desktop.png'),full_page=True)
             page.set_viewport_size({'width':390,'height':844})
@@ -168,7 +172,11 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             state['history_reads'] += 1
             result = [sample]
         elif path == '/rest/v1/alerts':
-            result = [{'id': 1, 'created_at': timestamp, 'message': 'Cloud movement', 'mail_status': 'pending'}]
+            result = [{
+                'id': 1, 'created_at': timestamp, 'mail_status': 'pending',
+                'message': 'Cloud movement\nGửi bù: có (dữ liệu cũ)\n'
+                           'Vị trí cuối (13:16:04 21/11/2026): https://maps.google.com/?q=10.777,106.701',
+            }]
         else:
             raise AssertionError(path)
         route.fulfill(json=result, headers=headers)
@@ -203,6 +211,12 @@ def test_supabase_dashboard_auth_telemetry_settings_and_csv(tmp_path):
             emit_telemetry()
             expect(page.locator('#battery')).to_have_text('13.10 V', timeout=2500)
             expect(page.locator('#alerts')).to_contain_text('Cloud movement')
+            expect(page.locator('#alerts')).to_contain_text('Gửi lại từ bộ nhớ ESP32')
+            expect(page.locator('#alerts .mail')).to_have_text('Email chưa cấu hình')
+            locations = page.locator('.alert-locations p')
+            expect(locations.nth(0)).to_have_text('Vị trí hiện tại (lúc cảnh báo): GPS chưa có tọa độ')
+            expect(locations.nth(1)).to_contain_text('Vị trí cũ (13:16:04 21/11/2026)')
+            expect(locations.nth(1).get_by_role('link')).to_have_attribute('href', 'https://maps.google.com/?q=10.777,106.701')
             expect(page.locator('#configuration-note')).to_contain_text('GPS_NO_FRESH_FIX')
             expect(page.locator('#configuration-note')).not_to_contain_text('IGNITION_NOT_CONNECTED')
             page.reload()

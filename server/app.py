@@ -419,7 +419,7 @@ def create_app(config: Config | None = None, *, worker=True):
         if row:
             p = json.loads(row["payload"])
             age = max(0, time.time() - row["received_at"])
-            result.update(telemetry=p, received_at=row["received_at"], age_s=int(age),
+            result.update(telemetry={**p, "sample_at": row["sample_at"]}, received_at=row["received_at"], age_s=int(age),
                           connection=("sleeping" if p["next_report_s"] > 60 else "online") if age <= max(30, p["next_report_s"] + 60) else "offline",
                           config_applied=p["config_revision"] == settings["revision"] and p["armed"] == settings["armed"])
         return result
